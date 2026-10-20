@@ -1,15 +1,7 @@
 
 import { createSlice, createAsyncThunk, nanoid } from "@reduxjs/toolkit";
-import { GoogleGenAI } from "@google/genai";
 
 const STORAGE_KEY = "doodle-buddy-chats";
-
-// const apiKey =  import.meta.env.MY_API_KEY;
-
-// const ai = new GoogleGenAI({ apiKey });
-
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const ai = new GoogleGenAI({ apiKey });
 
 function loadChats() {
   try {
@@ -22,7 +14,8 @@ function loadChats() {
         return data;
       }
     }
-  } catch {
+  } catch (error) {
+    console.error("Failed to load saved chats:", error);
   }
 
   const firstChat = {
@@ -57,7 +50,6 @@ export const sendMessage = createAsyncThunk(
         );
       }
 
-      
       const contents = chat.messages
         .filter(
           (message) =>
@@ -70,24 +62,31 @@ export const sendMessage = createAsyncThunk(
           parts: [{ text: message.text }],
         }));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents,
-        config: {
-          systemInstruction: `
-            You are Doodle Buddy, a friendly and helpful AI assistant.
-
-            Your personality is warm, creative, encouraging, and playful.
-            Use occasional cute emojis, but do not overuse them.
-            Give accurate and useful answers.
-            Adapt your tone to the user's needs.
-            Explain difficult topics in simple, clear steps.
-            Help with coding, studying, writing, brainstorming, and everyday questions.
-          `,
+      const apiResponse = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ contents }),
       });
 
-      const reply = response.text?.trim();
+      let data;
+
+      try {
+        data = await apiResponse.json();
+      } catch {
+        throw new Error(
+          "The server returned an invalid response. Please try again."
+        );
+      }
+
+      if (!apiResponse.ok) {
+        throw new Error(
+          data.error || "Unable to get a response from Gemini."
+        );
+      }
+
+      const reply = data.reply?.trim();
 
       if (!reply) {
         return rejectWithValue(
@@ -102,7 +101,7 @@ export const sendMessage = createAsyncThunk(
         createdAt: Date.now(),
       };
     } catch (error) {
-      console.error("Gemini API error:", error);
+      console.error("Doodle Buddy API error:", error);
 
       return rejectWithValue(
         error?.message ||
